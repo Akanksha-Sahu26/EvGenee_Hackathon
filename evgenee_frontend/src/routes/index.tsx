@@ -49,6 +49,11 @@ function attachDistances(stations: Station[], userLoc: [number, number] | null):
   });
 }
 
+// ─── UPDATE 4: Helper to format a distance value for display ────────────────
+function formatDistance(km: number): string {
+  return km < 1 ? `${(km * 1000).toFixed(0)}m` : `${km.toFixed(1)}km`;
+}
+
 export const Route = createFileRoute("/")({ component: HomePage });
 
 const DEFAULT_CENTER: [number, number] = [28.6139, 77.209];
@@ -200,13 +205,14 @@ function HomePage() {
     );
   }, [stations, search]);
 
+  // ─── UPDATE 4: Road distances via OSRM ──────────────────────────────────────
   const [roadDistances, setRoadDistances] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const top = filtered.slice(0, 8);
     if (!userLocation || top.length === 0) return;
 
-    // Only fetch if we have new stations that aren't in the cache
+    // Only fetch for stations not yet in the cache
     const missing = top.filter((s) => !roadDistances[s._id]);
     if (missing.length === 0) return;
 
@@ -228,7 +234,7 @@ function HomePage() {
             if (i === 0) return; // skip self-distance
             const station = top[i - 1];
             if (station && d !== null) {
-              newDists[station._id] = d / 1000;
+              newDists[station._id] = d / 1000; // metres → km
             }
           });
           setRoadDistances(newDists);
@@ -239,7 +245,21 @@ function HomePage() {
       }
     })();
     return () => controller.abort();
-  }, [filtered, userLocation, roadDistances]);
+  }, [filtered, userLocation]); // roadDistances intentionally excluded to avoid loop
+
+  // ─── UPDATE 4: Pick the best distance value + know which type it is ─────────
+  function getDistanceInfo(
+    stationId: string,
+    haversineKmVal: number | undefined,
+  ): { km: number; isRoad: boolean } | null {
+    if (roadDistances[stationId] !== undefined) {
+      return { km: roadDistances[stationId], isRoad: true };
+    }
+    if (haversineKmVal !== undefined) {
+      return { km: haversineKmVal, isRoad: false };
+    }
+    return null;
+  }
 
   // ── Close dropdown on outside click ────────────────────────────────────────
   useEffect(() => {
@@ -453,6 +473,9 @@ function HomePage() {
               ) : (
                 filtered.slice(0, 8).map((s) => {
                   const avail = s.isOpen && s.availablePorts > 0;
+                  // ─── UPDATE 4: Prioritize road distance, fall back to haversine ──
+                  const distInfo = getDistanceInfo(s._id, s.distanceKm);
+
                   return (
                     <button
                       key={s._id}
@@ -492,7 +515,6 @@ function HomePage() {
                           flexShrink: 0,
                         }}
                       >
-                        {/* ── CHARGING STATION ICON (dropdown) ── */}
                         <FontAwesomeIcon
                           icon={faChargingStation}
                           style={{
@@ -537,33 +559,36 @@ function HomePage() {
                           flexShrink: 0,
                         }}
                       >
-                        {(roadDistances[s._id] !== undefined || s.distanceKm !== undefined) && (
+                        {/* ─── UPDATE 4: Green = road distance, Gray = map distance ── */}
+                        {distInfo && (
                           <span
                             style={{
                               fontSize: 11,
                               fontWeight: 700,
-                              color: "#22c55e",
-                              background: "rgba(34,197,94,0.1)",
+                              // Green for road distance (accurate), gray for haversine (approximate)
+                              color: distInfo.isRoad ? "#22c55e" : "rgba(255,255,255,0.45)",
+                              background: distInfo.isRoad
+                                ? "rgba(34,197,94,0.1)"
+                                : "rgba(255,255,255,0.07)",
                               padding: "1px 6px",
                               borderRadius: 6,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 3,
                             }}
                           >
-                            {(() => {
-                              const d = roadDistances[s._id] ?? s.distanceKm;
-                              return d < 1 ? `${(d * 1000).toFixed(0)}m` : `${d.toFixed(1)}km`;
-                            })()}
-                            {roadDistances[s._id] !== undefined && (
-                              <span
-                                style={{
-                                  fontSize: 8,
-                                  opacity: 0.6,
-                                  marginLeft: 2,
-                                  verticalAlign: "middle",
-                                }}
-                              >
-                                ROAD
-                              </span>
-                            )}
+                            {formatDistance(distInfo.km)}
+                            {/* Label shows which type of distance */}
+                            <span
+                              style={{
+                                fontSize: 8,
+                                opacity: 0.7,
+                                fontWeight: 800,
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {distInfo.isRoad ? "ROAD" : "MAP"}
+                            </span>
                           </span>
                         )}
                         <span
@@ -732,6 +757,8 @@ function HomePage() {
                       key={s._id}
                       station={s}
                       isSelected={selectedId === s._id}
+                      // ─── UPDATE 4: Pass road distance down to card ───────────
+                      roadDistanceKm={roadDistances[s._id]}
                       onSelect={() => {
                         handleSelect(s);
                         setSnap("70px");
@@ -752,10 +779,13 @@ function MobileCard({
   station,
   isSelected,
   onSelect,
+  roadDistanceKm,
 }: {
   station: Station;
   isSelected: boolean;
   onSelect: () => void;
+  // ─── UPDATE 4: New prop for road distance ──────────────────────────────────
+  roadDistanceKm?: number;
 }) {
   const avail = station.isOpen && station.availablePorts > 0;
   const minPrice = station.pricing?.length
@@ -765,6 +795,14 @@ function MobileCard({
   const avgRating = station.reviews?.length
     ? (station.reviews.reduce((a, r) => a + r.rating, 0) / station.reviews.length).toFixed(1)
     : null;
+
+  // ─── UPDATE 4: Prefer road distance over haversine in card ─────────────────
+  const distInfo =
+    roadDistanceKm !== undefined
+      ? { km: roadDistanceKm, isRoad: true }
+      : station.distanceKm !== undefined
+        ? { km: station.distanceKm, isRoad: false }
+        : null;
 
   return (
     <button
@@ -805,7 +843,6 @@ function MobileCard({
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         ) : (
-          /* ── CHARGING STATION ICON (mobile card) ── */
           <FontAwesomeIcon
             icon={faChargingStation}
             style={{
@@ -876,20 +913,29 @@ function MobileCard({
           >
             {avail ? `${station.availablePorts} free` : station.isOpen ? "Full" : "Closed"}
           </span>
-          {station.distanceKm !== undefined && (
+
+          {/* ─── UPDATE 4: Green badge = road, Gray badge = map distance ────── */}
+          {distInfo && (
             <span
               style={{
                 fontSize: 11,
                 fontWeight: 700,
-                color: "#22c55e",
-                background: "rgba(34,197,94,0.1)",
+                // Green for road distance (accurate), gray for haversine (approximate)
+                color: distInfo.isRoad ? "#22c55e" : "rgba(255,255,255,0.45)",
+                background: distInfo.isRoad
+                  ? "rgba(34,197,94,0.1)"
+                  : "rgba(255,255,255,0.07)",
                 padding: "1px 6px",
                 borderRadius: 6,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
               }}
             >
-              {station.distanceKm < 1
-                ? `${(station.distanceKm * 1000).toFixed(0)}m`
-                : `${station.distanceKm.toFixed(1)}km`}
+              {formatDistance(distInfo.km)}
+              <span style={{ fontSize: 8, opacity: 0.7, fontWeight: 800 }}>
+                {distInfo.isRoad ? "ROAD" : "MAP"}
+              </span>
             </span>
           )}
         </div>

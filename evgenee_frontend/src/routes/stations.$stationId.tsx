@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { BookingsAPI, StationsAPI, PaymentAPI, type Station } from "@/lib/api";
 import { socket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,44 @@ export const Route = createFileRoute("/stations/$stationId")({
 
 type Slot = { startTime: string; endTime: string; isAvailable: boolean; availablePorts: number };
 
+// ─── UPDATE 1: IST-aware helpers ────────────────────────────────────────────
+function getISTMinutes(): number {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  return ist.getHours() * 60 + ist.getMinutes();
+}
+
+function getISTDateString(): string {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  return format(ist, "yyyy-MM-dd");
+}
+
+function isSlotExpired(slot: Slot, selectedDate: string): boolean {
+  const todayIST = getISTDateString();
+  if (selectedDate !== todayIST) return false;
+  const [h, m] = slot.startTime.split(":").map(Number);
+  return h * 60 + m <= getISTMinutes();
+}
+
+// ─── UPDATE 3: Peak pricing helper ──────────────────────────────────────────
+function isSlotInPeakHours(
+  slotTime: string,
+  peakPricing: { startTime: string; endTime: string; multiplier: number }[] | undefined,
+): { isPeak: boolean; multiplier: number } {
+  if (!peakPricing?.length) return { isPeak: false, multiplier: 1 };
+  const [h, m] = slotTime.split(":").map(Number);
+  const slotMins = h * 60 + m;
+  for (const peak of peakPricing) {
+    const [ph, pm] = peak.startTime.split(":").map(Number);
+    const [eh, em] = peak.endTime.split(":").map(Number);
+    if (slotMins >= ph * 60 + pm && slotMins < eh * 60 + em) {
+      return { isPeak: true, multiplier: peak.multiplier };
+    }
+  }
+  return { isPeak: false, multiplier: 1 };
+}
+
 function StationDetail() {
   const { stationId } = Route.useParams();
   const { user } = useAuth();
@@ -48,6 +86,13 @@ function StationDetail() {
   const [endTime, setEndTime] = useState("");
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [booking, setBooking] = useState(false);
+
+  // ─── UPDATE 1: Ticker to re-evaluate expired slots every minute ───────────
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (user?.vehicleNumbers?.length && !vehicleNumber) {
@@ -71,7 +116,6 @@ function StationDetail() {
       toast.success("Review added!");
       setReviewComment("");
       setReviewRating(5);
-      // Refresh station data
       const r = await StationsAPI.details(stationId);
       setStation(r.data?.data);
     } catch (e) {
@@ -158,13 +202,19 @@ function StationDetail() {
       toast.error("End time must be after start time");
       return;
     }
-    // Calculate total cost to initialize payment
+
+    // ─── UPDATE 1: Guard against expired slot at submission time ─────────────
+    if (isSlotExpired(selectedSlot, date)) {
+      toast.error("This slot has already passed. Please select a future slot.");
+      setSelectedSlot(null);
+      return;
+    }
+
     const pricing =
       station?.pricing?.find((p) => p.connectorType === connector) || station?.pricing?.[0];
     const pricePerKWh = pricing?.priceperKWh || 0;
     const currency = pricing?.currency || "INR";
 
-    // Duration in hours
     const startH = parseInt(selectedSlot.startTime.split(":")[0]);
     const startM = parseInt(selectedSlot.startTime.split(":")[1]);
     const endH = parseInt(endTime.split(":")[0]);
@@ -189,8 +239,32 @@ function StationDetail() {
         endTime,
         vehicleNumber,
       });
-    } catch (e) {
-      toast.error(getApiError(e, "Slot no longer available or overlapping booking exists."));
+    } catch (error: any) {
+      // ─── UPDATE 2: Intelligent slot suggestions on 409 conflict ─────────────
+      const responseData = error.response?.data || {};
+      const { nextAvailableSlot, suggestion } = responseData;
+
+      if (error.response?.status === 409 && nextAvailableSlot) {
+        toast.error("Slot Taken", {
+          description: suggestion || `This slot is no longer available.`,
+          action: {
+            label: `Book at ${nextAvailableSlot}`,
+            onClick: () => {
+              const suggested = slots.find((s) => s.startTime === nextAvailableSlot);
+              if (suggested) {
+                setSelectedSlot(suggested);
+                setEndTime(suggested.endTime || endTime);
+                toast.info(`Slot ${nextAvailableSlot} selected — review and confirm.`);
+              } else {
+                toast.warning("Suggested slot not in current list. Try refreshing.");
+              }
+            },
+          },
+        });
+      } else {
+        toast.error(getApiError(error, "Slot no longer available or overlapping booking exists."));
+      }
+
       setBooking(false);
       return;
     }
@@ -252,9 +326,7 @@ function StationDetail() {
             email: user?.email || "user@example.com",
             contact: "",
           },
-          theme: {
-            color: "#22c55e",
-          },
+          theme: { color: "#22c55e" },
           modal: {
             ondismiss: function () {
               toast.error("Payment cancelled");
@@ -303,6 +375,11 @@ function StationDetail() {
       ? station.ownerofStation === user.id
       : station.ownerofStation._id === user.id);
 
+  // ─── UPDATE 3: Compute peak info for the selected slot ───────────────────
+  const peakInfo = selectedSlot
+    ? isSlotInPeakHours(selectedSlot.startTime, (station as any).peakPricing)
+    : { isPeak: false, multiplier: 1 };
+
   return (
     <div className="max-w-2xl mx-auto pb-8">
       {/* Hero */}
@@ -334,7 +411,7 @@ function StationDetail() {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Quick stats row matching ref design */}
+        {/* Quick stats */}
         <div className="bg-card border-2 border-destructive/20 rounded-2xl p-4 grid grid-cols-2 gap-2 shadow-[var(--shadow-card)]">
           <div className="text-center border-r border-border">
             <p className="text-destructive font-bold text-sm">
@@ -422,25 +499,41 @@ function StationDetail() {
             <div>
               <Label className="mb-2 block">Start time</Label>
               <div className="grid grid-cols-4 gap-2 max-h-52 overflow-y-auto">
-                {slots.map((s) => (
-                  <button
-                    key={s.startTime}
-                    disabled={!s.isAvailable}
-                    onClick={() => {
-                      setSelectedSlot(s);
-                      if (!endTime) setEndTime(s.endTime);
-                    }}
-                    className={`text-xs font-medium py-2 rounded-xl border transition ${
-                      selectedSlot?.startTime === s.startTime
-                        ? "bg-[image:var(--gradient-primary)] text-primary-foreground border-transparent shadow-[var(--shadow-glow)]"
-                        : s.isAvailable
-                          ? "bg-card border-border hover:border-primary"
-                          : "bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed"
-                    }`}
-                  >
-                    {s.startTime}
-                  </button>
-                ))}
+                {slots.map((s) => {
+                  // ─── UPDATE 1: Real-time expiry check per slot ────────────
+                  const expired = isSlotExpired(s, date);
+                  const isDisabled = !s.isAvailable || expired;
+                  const isSelected = selectedSlot?.startTime === s.startTime;
+
+                  return (
+                    <button
+                      key={s.startTime}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        setSelectedSlot(s);
+                        if (!endTime) setEndTime(s.endTime);
+                      }}
+                      className={cn(
+                        "text-xs font-medium py-2 rounded-xl border transition relative",
+                        isSelected
+                          ? "bg-[image:var(--gradient-primary)] text-primary-foreground border-transparent shadow-[var(--shadow-glow)]"
+                          : expired
+                            ? "bg-muted text-muted-foreground border-border opacity-50 grayscale cursor-not-allowed"
+                            : s.isAvailable
+                              ? "bg-card border-border hover:border-primary"
+                              : "bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed",
+                      )}
+                    >
+                      {s.startTime}
+                      {/* ── UPDATE 1: PAST badge ── */}
+                      {expired && (
+                        <span className="text-[9px] block font-bold text-destructive leading-tight">
+                          PAST
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
                 {slots.length === 0 && (
                   <p className="col-span-4 text-sm text-muted-foreground py-4 text-center">
                     No slots
@@ -448,6 +541,16 @@ function StationDetail() {
                 )}
               </div>
             </div>
+
+            {/* ─── UPDATE 3: Peak pricing badge ──────────────────────────── */}
+            {peakInfo.isPeak && (
+              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
+                <Zap className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  ⚡ Peak Hours — {peakInfo.multiplier}x Rate applies to this slot
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -477,7 +580,11 @@ function StationDetail() {
                       onChange={(e) => setVehicleNumber(e.target.value)}
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      No vehicles saved. Add them in your <Link to="/profile" className="text-primary underline">profile</Link>.
+                      No vehicles saved. Add them in your{" "}
+                      <Link to="/profile" className="text-primary underline">
+                        profile
+                      </Link>
+                      .
                     </p>
                   </div>
                 )}
