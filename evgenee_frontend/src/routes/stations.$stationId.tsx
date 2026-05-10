@@ -23,6 +23,10 @@ import {
   Navigation,
   Send,
   LayoutDashboard,
+  // ── NEW: icons for availability card ──
+  CheckCircle2,
+  XCircle,
+  PlugZap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatCurrency, getApiError } from "@/lib/utils";
@@ -35,7 +39,7 @@ export const Route = createFileRoute("/stations/$stationId")({
 
 type Slot = { startTime: string; endTime: string; isAvailable: boolean; availablePorts: number };
 
-// ─── UPDATE 1: IST-aware helpers ────────────────────────────────────────────
+// ─── IST-aware helpers ───────────────────────────────────────────────────────
 function getISTMinutes(): number {
   const now = new Date();
   const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
@@ -55,7 +59,7 @@ function isSlotExpired(slot: Slot, selectedDate: string): boolean {
   return h * 60 + m <= getISTMinutes();
 }
 
-// ─── UPDATE 3: Peak pricing helper ──────────────────────────────────────────
+// ─── Peak pricing helper ─────────────────────────────────────────────────────
 function isSlotInPeakHours(
   slotTime: string,
   peakPricing: { startTime: string; endTime: string; multiplier: number }[] | undefined,
@@ -73,6 +77,115 @@ function isSlotInPeakHours(
   return { isPeak: false, multiplier: 1 };
 }
 
+// ─── NEW: Charger Availability Card ─────────────────────────────────────────
+/**
+ * Shows total machines vs currently available for the selected connector type.
+ * `available` is derived from the nearest non-expired slot's availablePorts,
+ * which is refreshed via socket on every booking (availability:updated event).
+ */
+function ChargerAvailabilityCard({
+  connector,
+  totalMachines,
+  slots,
+  date,
+  selectedSlot,
+}: {
+  connector: string;
+  totalMachines: number;
+  slots: Slot[];
+  date: string;
+  selectedSlot: Slot | null;
+}) {
+  // True if at least one slot today is not yet expired
+  const hasUpcomingSlots = slots.some((s) => !isSlotExpired(s, date));
+  const nearestAvailable = slots.find((s) => s.isAvailable && !isSlotExpired(s, date));
+  const available = selectedSlot
+    ? selectedSlot.availablePorts
+    : (nearestAvailable?.availablePorts ?? 0);
+
+  const pct = totalMachines > 0 ? (available / totalMachines) * 100 : 0;
+
+  const noSlots = !hasUpcomingSlots;
+  const statusColor = noSlots ? "text-white/30" : available === 0 ? "text-red-400" : pct <= 30 ? "text-amber-400" : "text-emerald-400";
+  const barColor   = noSlots ? "bg-white/15"   : available === 0 ? "bg-red-500"   : pct <= 30 ? "bg-amber-500"   : "bg-emerald-500";
+  const badgeLabel = noSlots ? "No Slots Today" : available === 0 ? "All Occupied" : `${available} Free`;
+  const badgeClass = noSlots
+    ? "bg-white/8 text-white/40 border border-white/10"
+    : available === 0
+    ? "bg-red-500/15 text-red-400 border border-red-500/20"
+    : pct <= 30
+    ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+    : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20";
+
+  return (
+    <div
+      className="rounded-2xl border p-3.5 space-y-3"
+      style={{
+        background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+        borderColor: "rgba(255,255,255,0.08)",
+      }}
+    >
+      {/* Header — plain text, no icon that looks like a machine pill */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
+          <PlugZap className="h-3.5 w-3.5 text-white/30" />
+          {connector} · {totalMachines} machine{totalMachines !== 1 ? "s" : ""} total
+        </span>
+        <span className={cn("text-xs font-black px-2.5 py-1 rounded-full", badgeClass)}>
+          {badgeLabel}
+        </span>
+      </div>
+
+      {/* One labelled pill per machine — clearly shows Machine 1, Machine 2… */}
+      <div className="flex flex-wrap gap-2">
+        {Array.from({ length: totalMachines }).map((_, i) => {
+          const isFree = !noSlots && i < available;
+          return (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all",
+                noSlots
+                  ? "bg-white/5 border-white/10 text-white/30"
+                  : isFree
+                  ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                  : "bg-red-500/10 border-red-500/20 text-red-400/70",
+              )}
+            >
+              <Zap className="h-3 w-3 shrink-0" />
+              Machine {i + 1}
+              <span className="text-[10px] font-normal opacity-70 ml-0.5">
+                {noSlots ? "—" : isFree ? "Free" : "Busy"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Progress bar + summary line */}
+      <div className="space-y-1.5">
+        <div className="h-1.5 w-full bg-white/8 rounded-full overflow-hidden">
+          <div
+            className={cn("h-full rounded-full transition-all duration-500", barColor)}
+            style={{ width: noSlots ? "0%" : `${pct}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider">
+          <span className={cn("font-black", statusColor)}>
+            {noSlots
+              ? "No upcoming slots for today"
+              : `${available} of ${totalMachines} available`}
+          </span>
+          {selectedSlot && !noSlots && (
+            <span className="text-white/30">for slot {selectedSlot.startTime}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ─── END: Charger Availability Card ─────────────────────────────────────────
+
 function StationDetail() {
   const { stationId } = Route.useParams();
   const { user } = useAuth();
@@ -87,7 +200,7 @@ function StationDetail() {
   const [vehicleNumber, setVehicleNumber] = useState("");
   const [booking, setBooking] = useState(false);
 
-  // ─── UPDATE 1: Ticker to re-evaluate expired slots every minute ───────────
+  // Ticker to re-evaluate expired slots every minute
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
@@ -168,6 +281,8 @@ function StationDetail() {
       }
     };
 
+    // ── This fires after every booking → re-fetches slots → availablePorts
+    //    in ChargerAvailabilityCard updates automatically ──────────────────
     const onAvailabilityUpdate = (data: any) => {
       if (data.stationId === stationId) {
         const d = new Date(data.date).toISOString().split("T")[0];
@@ -177,7 +292,15 @@ function StationDetail() {
             date,
             ...(connector ? { connectorType: connector } : {}),
           })
-            .then((r) => setSlots(r.data?.data?.slots ?? []))
+            .then((r) => {
+              const newSlots = r.data?.data?.slots ?? [];
+              setSlots(newSlots);
+              // ── NEW: keep selectedSlot in sync so availability card refreshes
+              setSelectedSlot((prev) => {
+                if (!prev) return null;
+                return newSlots.find((s: Slot) => s.startTime === prev.startTime) ?? null;
+              });
+            })
             .catch(console.error);
         }
       }
@@ -203,9 +326,15 @@ function StationDetail() {
       return;
     }
 
-    // ─── UPDATE 1: Guard against expired slot at submission time ─────────────
     if (isSlotExpired(selectedSlot, date)) {
       toast.error("This slot has already passed. Please select a future slot.");
+      setSelectedSlot(null);
+      return;
+    }
+
+    // ── NEW: guard — no machines available for this slot ─────────────────
+    if (selectedSlot.availablePorts === 0) {
+      toast.error("No chargers available for this slot. Please choose another.");
       setSelectedSlot(null);
       return;
     }
@@ -240,7 +369,6 @@ function StationDetail() {
         vehicleNumber,
       });
     } catch (error: any) {
-      // ─── UPDATE 2: Intelligent slot suggestions on 409 conflict ─────────────
       const responseData = error.response?.data || {};
       const { nextAvailableSlot, suggestion } = responseData;
 
@@ -375,10 +503,13 @@ function StationDetail() {
       ? station.ownerofStation === user.id
       : station.ownerofStation._id === user.id);
 
-  // ─── UPDATE 3: Compute peak info for the selected slot ───────────────────
   const peakInfo = selectedSlot
     ? isSlotInPeakHours(selectedSlot.startTime, (station as any).peakPricing)
     : { isPeak: false, multiplier: 1 };
+
+  // ── NEW: total machines for selected connector type ───────────────────────
+  const selectedPricing = station.pricing?.find((p) => p.connectorType === connector);
+  const totalMachinesForConnector = selectedPricing?.portCount ?? 1;
 
   return (
     <div className="max-w-2xl mx-auto pb-8">
@@ -487,10 +618,11 @@ function StationDetail() {
                   </SelectTrigger>
                   <SelectContent>
                     {station.typeOfConnectors.map((c) => {
-                      const portCount = station.pricing?.find(p => p.connectorType === c)?.portCount || 1;
+                      const portCount =
+                        station.pricing?.find((p) => p.connectorType === c)?.portCount ?? 1;
                       return (
                         <SelectItem key={c} value={c}>
-                          {c} ({portCount} Port{portCount !== 1 ? 's' : ''})
+                          {c} · {portCount} machine{portCount !== 1 ? "s" : ""}
                         </SelectItem>
                       );
                     })}
@@ -499,11 +631,27 @@ function StationDetail() {
               </div>
             </div>
 
+            {/* ── NEW: Charger Availability Card ───────────────────────────
+                Shown as soon as a connector is selected and slots load.
+                Updates automatically after any booking via socket:
+                  booking → server emits availability:updated
+                           → onAvailabilityUpdate() re-fetches slots
+                           → slots state updates → this card re-renders
+            ──────────────────────────────────────────────────────────── */}
+            {connector && slots.length > 0 && (
+              <ChargerAvailabilityCard
+                connector={connector}
+                totalMachines={totalMachinesForConnector}
+                slots={slots}
+                date={date}
+                selectedSlot={selectedSlot}
+              />
+            )}
+
             <div>
               <Label className="mb-2 block">Start time</Label>
               <div className="grid grid-cols-4 gap-2 max-h-52 overflow-y-auto">
                 {slots.map((s) => {
-                  // ─── UPDATE 1: Real-time expiry check per slot ────────────
                   const expired = isSlotExpired(s, date);
                   const isDisabled = !s.isAvailable || expired;
                   const isSelected = selectedSlot?.startTime === s.startTime;
@@ -521,19 +669,18 @@ function StationDetail() {
                         isSelected
                           ? "bg-[image:var(--gradient-primary)] text-primary-foreground border-transparent shadow-[var(--shadow-glow)]"
                           : expired
-                            ? "bg-muted text-muted-foreground border-border opacity-50 grayscale cursor-not-allowed"
-                            : s.isAvailable
-                              ? "bg-card border-border hover:border-primary"
-                              : "bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed",
+                          ? "bg-muted text-muted-foreground border-border opacity-50 grayscale cursor-not-allowed"
+                          : s.isAvailable
+                          ? "bg-card border-border hover:border-primary"
+                          : "bg-muted text-muted-foreground border-border opacity-50 cursor-not-allowed",
                       )}
                     >
                       {s.startTime}
                       {s.isAvailable && !expired && (
                         <span className="text-[10px] block font-normal opacity-80 mt-0.5">
-                          {s.availablePorts} port{s.availablePorts !== 1 && 's'}
+                          {s.availablePorts}/{totalMachinesForConnector} free
                         </span>
                       )}
-                      {/* ── UPDATE 1: PAST badge ── */}
                       {expired && (
                         <span className="text-[9px] block font-bold text-destructive leading-tight mt-0.5">
                           PAST
@@ -550,7 +697,7 @@ function StationDetail() {
               </div>
             </div>
 
-            {/* ─── UPDATE 3: Peak pricing badge ──────────────────────────── */}
+            {/* Peak pricing badge */}
             {peakInfo.isPeak && (
               <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
                 <Zap className="h-4 w-4 text-amber-500 shrink-0" />
