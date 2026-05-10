@@ -384,97 +384,97 @@ function ProfilePage() {
           </div>
         )}
 
-        {/* ── Vehicle Numbers Section ──────────────────────────────── */}
-        <div
-          className="rounded-2xl p-5 mb-4 border"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
-            borderColor: "rgba(255,255,255,0.07)",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
-                <Hash className="h-3.5 w-3.5 text-purple-400" />
-              </div>
-              <div>
-                <span className="text-sm font-bold text-white">My Vehicles</span>
-                <span className="ml-2 text-[10px] text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full border border-white/8">
-                  {vehicleNumbers.length} registered
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Existing vehicle number chips */}
-          {vehicleNumbers.length > 0 ? (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {vehicleNumbers.map((num) => (
-                <div
-                  key={num}
-                  className="group flex items-center gap-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl px-3 py-1.5 transition-all hover:bg-purple-500/15"
-                >
-                  <Car className="h-3 w-3 text-purple-400 shrink-0" />
-                  <span className="text-sm font-bold text-purple-200 tracking-wider font-mono">
-                    {num}
-                  </span>
-                  <button
-                    onClick={() => removeVehicleNumber(num)}
-                    className="ml-1 h-4 w-4 rounded-full bg-white/10 hover:bg-red-500/30 flex items-center justify-center transition-colors"
-                    aria-label={`Remove ${num}`}
-                  >
-                    <X className="h-2.5 w-2.5 text-white/60 hover:text-red-300" />
-                  </button>
+        {/* ── Vehicle Numbers Section (users only) ─────────────────── */}
+        {user.role === "user" && (
+          <div
+            className="rounded-2xl p-5 mb-4 border"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+              borderColor: "rgba(255,255,255,0.07)",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center">
+                  <Hash className="h-3.5 w-3.5 text-purple-400" />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-5 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-2">
-                <Car className="h-5 w-5 text-white/20" />
+                <div>
+                  <span className="text-sm font-bold text-white">My Vehicles</span>
+                  <span className="ml-2 text-[10px] text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full border border-white/8">
+                    {vehicleNumbers.length} registered
+                  </span>
+                </div>
               </div>
-              <p className="text-white/30 text-xs">No vehicles registered yet</p>
             </div>
-          )}
 
-          {/* Add new vehicle number */}
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                value={newVehicleNum}
-                onChange={(e) => setNewVehicleNum(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addVehicleNumber();
-                  }
+            {vehicleNumbers.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {vehicleNumbers.map((num) => (
+                  <div
+                    key={num}
+                    className="group flex items-center gap-1.5 bg-purple-500/10 border border-purple-500/20 rounded-xl px-3 py-1.5 transition-all hover:bg-purple-500/15"
+                  >
+                    <Car className="h-3 w-3 text-purple-400 shrink-0" />
+                    <span className="text-sm font-bold text-purple-200 tracking-wider font-mono">
+                      {num}
+                    </span>
+                    <button
+                      onClick={() => removeVehicleNumber(num)}
+                      className="ml-1 h-4 w-4 rounded-full bg-white/10 hover:bg-red-500/30 flex items-center justify-center transition-colors"
+                      aria-label={`Remove ${num}`}
+                    >
+                      <X className="h-2.5 w-2.5 text-white/60 hover:text-red-300" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-5 mb-4">
+                <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-2">
+                  <Car className="h-5 w-5 text-white/20" />
+                </div>
+                <p className="text-white/30 text-xs">No vehicles registered yet</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  value={newVehicleNum}
+                  onChange={(e) => setNewVehicleNum(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addVehicleNumber();
+                    }
+                  }}
+                  placeholder="e.g. MH 01 AB 1234"
+                  className="bg-white/[0.05] border-white/10 text-white placeholder:text-white/20 rounded-xl h-11 focus:border-purple-500/50 focus:ring-purple-500/10 pr-3 font-mono uppercase"
+                />
+              </div>
+              <button
+                onClick={addVehicleNumber}
+                disabled={!newVehicleNum.trim()}
+                className="h-11 px-4 rounded-xl font-semibold text-sm flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)",
+                  boxShadow: newVehicleNum.trim()
+                    ? "0 0 16px rgba(124,58,237,0.3)"
+                    : "none",
                 }}
-                placeholder="e.g. MH 01 AB 1234"
-                className="bg-white/[0.05] border-white/10 text-white placeholder:text-white/20 rounded-xl h-11 focus:border-purple-500/50 focus:ring-purple-500/10 pr-3 font-mono uppercase"
-              />
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </button>
             </div>
-            <button
-              onClick={addVehicleNumber}
-              disabled={!newVehicleNum.trim()}
-              className="h-11 px-4 rounded-xl font-semibold text-sm flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{
-                background:
-                  "linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)",
-                boxShadow: newVehicleNum.trim()
-                  ? "0 0 16px rgba(124,58,237,0.3)"
-                  : "none",
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Add
-            </button>
+            <p className="text-[10px] text-white/25 mt-2 pl-1">
+              Press Enter or tap Add · Vehicle number will be auto-uppercased
+            </p>
           </div>
-          <p className="text-[10px] text-white/25 mt-2 pl-1">
-            Press Enter or tap Add · Vehicle number will be auto-uppercased
-          </p>
-        </div>
+        )}
 
         {/* ── Save Button ──────────────────────────────────────────── */}
         <button

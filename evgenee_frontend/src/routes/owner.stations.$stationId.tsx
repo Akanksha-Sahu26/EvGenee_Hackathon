@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { BookingsAPI, StationsAPI, type Booking, type Station } from "@/lib/api";
@@ -7,28 +7,15 @@ import { Button } from "@/components/ui/button";
 import {
   Loader2,
   MapPin,
-  Zap,
-  TrendingUp,
-  Calendar,
-  IndianRupee,
   ArrowLeft,
   KeyRound,
   CheckCircle2,
+  Calendar,
+  Zap,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatCurrency, getApiError } from "@/lib/utils";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -60,7 +47,6 @@ function StationOwnerDashboard() {
     try {
       const sr = await StationsAPI.details(stationId);
       setStation(sr.data?.data);
-
       const br = await BookingsAPI.station(stationId, { limit: 100 });
       setBookings(br.data?.data ?? []);
     } catch (e) {
@@ -74,13 +60,11 @@ function StationOwnerDashboard() {
     if (isOwner) {
       load();
       socket.emit("station:subscribe", stationId);
-
       const reload = () => load();
       socket.on("booking:created", reload);
       socket.on("booking:cancelled", reload);
       socket.on("booking:checkedIn", reload);
       socket.on("booking:completed", reload);
-
       return () => {
         socket.emit("station:unsubscribe", stationId);
         socket.off("booking:created", reload);
@@ -121,190 +105,260 @@ function StationOwnerDashboard() {
   };
 
   const stats = useMemo(() => {
+    const confirmed = bookings.filter((b) => b.status === "confirmed").length;
+    const inProgress = bookings.filter((b) => b.status === "in-progress").length;
+    const completed = bookings.filter((b) => b.status === "completed").length;
     const revenue = bookings
       .filter((b) => b.status === "completed")
       .reduce((s, b) => s + b.grandTotal, 0);
-    const active = bookings.filter((b) => ["confirmed", "in-progress"].includes(b.status)).length;
-    const totalKWh = bookings
-      .filter((b) => b.status === "completed")
-      .reduce((s, b) => s + b.estimatedKWh, 0);
-
-    const byDay: Record<string, number> = {};
-    bookings.forEach((b) => {
-      const k = format(new Date(b.date), "MMM d");
-      byDay[k] = (byDay[k] || 0) + 1;
-    });
-    const trend = Object.entries(byDay)
-      .slice(-7)
-      .map(([day, count]) => ({ day, count }));
-
-    const byStatus: Record<string, number> = {};
-    bookings.forEach((b) => {
-      byStatus[b.status] = (byStatus[b.status] || 0) + 1;
-    });
-    const statusData = Object.entries(byStatus).map(([name, value]) => ({ name, value }));
-
-    return { revenue, active, totalKWh, trend, statusData };
+    return { confirmed, inProgress, completed, revenue };
   }, [bookings]);
 
   if (authLoading)
     return (
-      <div className="h-screen grid place-items-center">
-        <Loader2 className="h-7 w-7 animate-spin text-primary" />
+      <div className="h-screen grid place-items-center bg-[#000814]">
+        <Loader2 className="h-7 w-7 animate-spin text-green-400" />
       </div>
     );
   if (!isAuthed) return <Navigate to="/auth/login" />;
   if (!isOwner) return <Navigate to="/" />;
 
-  const PIE_COLORS = [
-    "oklch(0.68 0.19 148)",
-    "oklch(0.78 0.17 75)",
-    "oklch(0.62 0.18 200)",
-    "oklch(0.62 0.22 27)",
-    "oklch(0.7 0.18 60)",
-  ];
-
   return (
     <div
-      className="max-w-3xl mx-auto p-4 space-y-6"
-      style={{ paddingTop: "calc(var(--safe-top) + 1.5rem)" }}
+      className="min-h-screen bg-[#000814] text-white"
+      style={{
+        paddingBottom: "5.5rem",
+        fontFamily: "'DM Sans', sans-serif",
+        paddingTop: "calc(var(--safe-top, 0px) + 1rem)",
+      }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => nav({ to: "/owner" })}
-          className="shrink-0"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-black text-white">{station?.name || "Station Dashboard"}</h1>
-          <p className="text-sm text-white/70 font-medium flex items-center gap-1">
-            <MapPin className="h-3 w-3" /> {station?.address.city}, {station?.address.street}
-          </p>
-        </div>
-      </div>
+      {/* Background glows */}
+      <div
+        className="fixed top-0 left-0 w-[500px] h-[350px] pointer-events-none z-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 0% 0%, rgba(16,185,129,0.07) 0%, transparent 70%)",
+        }}
+      />
 
-      {loading ? (
-        <div className="py-20 grid place-items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="relative z-10 max-w-2xl mx-auto px-4">
+        {/* ── Header ── */}
+        <div className="flex items-center gap-3 mb-5">
+          <button
+            onClick={() => nav({ to: "/owner" })}
+            className="h-9 w-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4 text-white/70" />
+          </button>
+          <div className="min-w-0">
+            <h1
+              className="text-xl font-black text-white leading-tight truncate"
+              style={{ fontFamily: "'Poppins', sans-serif" }}
+            >
+              {station?.name || "Station Dashboard"}
+            </h1>
+            {station && (
+              <p className="text-xs text-white/50 flex items-center gap-1 mt-0.5 truncate">
+                <MapPin className="h-3 w-3 shrink-0 text-green-400" />
+                {station.address.city}, {station.address.street}
+              </p>
+            )}
+          </div>
         </div>
-      ) : (
-        <>
-          {/* Bookings Table */}
-          <div className="bg-card rounded-2xl p-4 shadow-xl border border-white/5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-white">Station Bookings</h2>
-              <span className="text-[10px] bg-white/5 px-2 py-1 rounded-full text-white/40 uppercase tracking-widest font-bold">
-                Latest 100
-              </span>
+
+        {loading ? (
+          <div className="py-24 grid place-items-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative">
+                <div className="h-12 w-12 rounded-full border-2 border-green-500/20 border-t-green-400 animate-spin" />
+                <Zap className="h-5 w-5 text-green-400 absolute inset-0 m-auto" />
+              </div>
+              <p className="text-white/40 text-sm">Loading bookings…</p>
             </div>
-            <div className="space-y-3">
+          </div>
+        ) : (
+          <>
+            {/* ── Stats Strip ── */}
+            <div className="grid grid-cols-4 gap-2 mb-5">
+              {[
+                { label: "Confirmed", value: stats.confirmed, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+                { label: "Active", value: stats.inProgress, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+                { label: "Done", value: stats.completed, color: "text-white", bg: "bg-white/5 border-white/10" },
+                { label: "Revenue", value: `₹${stats.revenue.toLocaleString("en-IN")}`, color: "text-green-400", bg: "bg-green-500/10 border-green-500/20" },
+              ].map(({ label, value, color, bg }) => (
+                <div
+                  key={label}
+                  className={cn("rounded-xl p-2.5 border text-center", bg)}
+                >
+                  <p className={cn("font-black text-base leading-none mb-1", color)}>
+                    {value}
+                  </p>
+                  <p className="text-white/40 text-[10px] font-medium">{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Bookings List ── */}
+            <div
+              className="rounded-2xl border overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.02) 100%)",
+                borderColor: "rgba(255,255,255,0.07)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              {/* List header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+                <span className="text-sm font-bold text-white">Bookings</span>
+                <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded-full text-white/40 uppercase tracking-widest font-bold border border-white/8">
+                  Latest {bookings.length}
+                </span>
+              </div>
+
               {bookings.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <p>No bookings found for this station.</p>
+                <div className="text-center py-14">
+                  <div className="h-12 w-12 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-3">
+                    <Calendar className="h-6 w-6 text-white/20" />
+                  </div>
+                  <p className="text-white/30 text-sm font-medium">No bookings yet</p>
+                  <p className="text-white/20 text-xs mt-1">Bookings will appear here in real-time</p>
                 </div>
               ) : (
-                bookings.map((b) => {
-                  const u = typeof b.user === "object" ? b.user.name : "User";
-                  return (
-                    <div
-                      key={b._id}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-white">{u}</p>
+                <div className="divide-y divide-white/5">
+                  {bookings.map((b) => {
+                    // Safely resolve user name — handle string id or populated object
+                    const userName =
+                      b.user && typeof b.user === "object" && "name" in b.user
+                        ? (b.user as { name: string }).name
+                        : typeof b.user === "string"
+                        ? "User"
+                        : "Unknown";
+
+                    const isConfirmed = b.status === "confirmed";
+                    const isInProgress = b.status === "in-progress";
+                    const isCompleted = b.status === "completed";
+                    const isCancelled = b.status === "cancelled";
+
+                    return (
+                      <div
+                        key={b._id}
+                        className="px-4 py-3.5 hover:bg-white/[0.02] transition-colors"
+                      >
+                        {/* Row 1: name + badge */}
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="h-7 w-7 rounded-lg bg-white/8 border border-white/10 flex items-center justify-center shrink-0">
+                              <User className="h-3.5 w-3.5 text-white/50" />
+                            </div>
+                            <span className="font-bold text-white text-sm truncate">
+                              {userName}
+                            </span>
+                          </div>
                           <span
                             className={cn(
-                              "text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter",
-                              b.status === "confirmed"
-                                ? "bg-emerald-500/20 text-emerald-400"
-                                : b.status === "in-progress"
-                                  ? "bg-blue-500/20 text-blue-400"
-                                  : "bg-white/10 text-white/40",
+                              "text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider shrink-0",
+                              isConfirmed && "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20",
+                              isInProgress && "bg-blue-500/20 text-blue-400 border border-blue-500/20",
+                              isCompleted && "bg-white/10 text-white/50 border border-white/10",
+                              isCancelled && "bg-red-500/20 text-red-400 border border-red-500/20",
+                              !isConfirmed && !isInProgress && !isCompleted && !isCancelled &&
+                                "bg-white/10 text-white/40 border border-white/10",
                             )}
                           >
                             {b.status}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground flex items-center gap-2">
-                          <Calendar className="h-3 w-3" /> {format(new Date(b.date), "MMM d, yyyy")}{" "}
-                          · {b.startTime}-{b.endTime}
-                        </p>
-                        <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">
-                          {b.connectorType} · {b.estimatedKWh} kWh
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between sm:flex-col sm:items-end gap-2">
-                        <p className="font-bold text-primary">{formatCurrency(b.grandTotal)}</p>
-                        <div className="flex gap-2">
-                          {b.status === "confirmed" && (
-                            <Button
-                              size="sm"
-                              className="h-8 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
-                              onClick={() => setOtpFor(b)}
-                            >
-                              <KeyRound className="h-3 w-3 mr-1.5" /> CHECK-IN
-                            </Button>
-                          )}
-                          {b.status === "in-progress" && (
-                            <Button
-                              size="sm"
-                              className="h-8 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold"
-                              onClick={() => handleComplete(b._id)}
-                              disabled={busyId === b._id}
-                            >
-                              {busyId === b._id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="h-3 w-3 mr-1.5" /> COMPLETE
-                                </>
-                              )}
-                            </Button>
-                          )}
+
+                        {/* Row 2: date/time + connector */}
+                        <div className="flex items-center gap-3 mb-2.5 pl-9">
+                          <span className="text-xs text-white/40 flex items-center gap-1.5">
+                            <Calendar className="h-3 w-3 text-white/30 shrink-0" />
+                            {format(new Date(b.date), "MMM d, yyyy")} · {b.startTime}–{b.endTime}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 pl-9 mb-2.5">
+                          <span className="text-[10px] text-white/30 uppercase font-bold tracking-wider">
+                            {b.connectorType}
+                          </span>
+                          <span className="h-1 w-1 rounded-full bg-white/20" />
+                          <span className="text-[10px] text-white/30 uppercase font-bold tracking-wider">
+                            {b.estimatedKWh} kWh
+                          </span>
+                        </div>
+
+                        {/* Row 3: amount + action */}
+                        <div className="flex items-center justify-between pl-9">
+                          <span className="font-black text-green-400 text-sm">
+                            {formatCurrency(b.grandTotal)}
+                          </span>
+                          <div className="flex gap-2">
+                            {isConfirmed && (
+                              <button
+                                onClick={() => setOtpFor(b)}
+                                className="h-8 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                                style={{ boxShadow: "0 0 12px rgba(16,185,129,0.25)" }}
+                              >
+                                <KeyRound className="h-3 w-3" />
+                                Check-in
+                              </button>
+                            )}
+                            {isInProgress && (
+                              <button
+                                onClick={() => handleComplete(b._id)}
+                                disabled={busyId === b._id}
+                                className="h-8 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                style={{ boxShadow: "0 0 12px rgba(59,130,246,0.25)" }}
+                              >
+                                {busyId === b._id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Complete
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               )}
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
 
-      {/* OTP Dialog for Check-in */}
+      {/* ── OTP Dialog ── */}
       <Dialog open={!!otpFor} onOpenChange={(o) => !o && setOtpFor(null)}>
-        <DialogContent className="bg-[#0a1628] border border-white/10 text-white rounded-2xl">
+        <DialogContent className="bg-[#0a1628] border border-white/10 text-white rounded-2xl max-w-sm mx-auto">
           <DialogHeader>
-            <DialogTitle className="text-white">Verify Check-in OTP</DialogTitle>
+            <DialogTitle className="text-white font-bold">Verify Check-in OTP</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-white/40">
-            Enter the 6-digit OTP provided by the user at the station.
+            Enter the 6-digit OTP provided by the customer.
           </p>
           <Input
             value={otp}
             onChange={(e) => setOtp(e.target.value)}
             maxLength={6}
             placeholder="000000"
-            className="text-center text-2xl tracking-[0.5em] font-mono h-14 bg-white/5 border-white/10 text-white placeholder:text-white/20"
+            className="text-center text-2xl tracking-[0.5em] font-mono h-14 bg-white/5 border-white/10 text-white placeholder:text-white/20 rounded-xl"
           />
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setOtpFor(null)}
-              className="border-white/10 text-white/60 hover:bg-white/5"
+              onClick={() => { setOtpFor(null); setOtp(""); }}
+              className="border-white/10 text-white/60 hover:bg-white/5 rounded-xl flex-1"
             >
               Cancel
             </Button>
             <Button
               onClick={handleCheckIn}
               disabled={otp.length !== 6 || busyId === otpFor?._id}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex-1"
             >
               {busyId === otpFor?._id ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -315,18 +369,6 @@ function StationOwnerDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-card rounded-2xl p-4 shadow-xl border border-white/5">
-      <div className="h-10 w-10 rounded-xl bg-primary/10 grid place-items-center text-primary mb-3">
-        {icon}
-      </div>
-      <p className="text-xs text-white/40 font-medium mb-1">{label}</p>
-      <p className="font-black text-xl text-white truncate">{value}</p>
     </div>
   );
 }
