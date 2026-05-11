@@ -1,17 +1,8 @@
 const Booking = require('../models/booking.model');
 const cron = require('node-cron');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../services/email.service');
 const { NODEMAILER_USER, NODEMAILER_PASS, NODEMAILER_PORT } = require('../config/config');
 
-const transporter = nodemailer.createTransport({
-    secure: true,
-    host: "smtp.gmail.com",
-    port: Number(NODEMAILER_PORT),
-    auth: {
-        user: NODEMAILER_USER,
-        pass: NODEMAILER_PASS
-    }
-});
 const initializeCronJobs = (io) => {
 
     cron.schedule('*/15 * * * *', async () => {
@@ -124,20 +115,21 @@ const initializeCronJobs = (io) => {
 
             for (const b of upcomingBookings) {
         
-                await transporter.sendMail({
+                await sendEmail({
                     to: b.user.email,
                     subject: "⚡ Reminder: Your Charging Session starts in 15 mins!",
-                    html: `
-                        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                            <h2>Hello ${b.user.name},</h2>
-                            <p>Your EV charging session is scheduled to start at <b>${b.startTime}</b>.</p>
-                            <p>Please arrive at the station a few minutes early.</p>
-                            <div style="background: #f4f4f4; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                                <p><b>Status:</b> Ready to Charge</p>
-                                <p><b>Vehicle Number:</b> ${b.vehicleNumber || 'N/A'}</p>
-                            </div>
-                            <p>Happy Charging!<br/>Team EvGenee</p>
+                    title: "Charging Session Reminder",
+                    content: `
+                        <p>Hello <b>${b.user.name}</b>,</p>
+                        <p>Your EV charging session is scheduled to start at <b>${b.startTime}</b>.</p>
+                        <p>Please arrive at the station a few minutes early to ensure a smooth experience.</p>
+                        <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #edf2f7;">
+                            <p style="margin: 0; color: #64748b; font-size: 13px;">STATUS</p>
+                            <p style="margin: 5px 0 15px 0; font-weight: 700; color: #22c55e;">Ready to Charge</p>
+                            <p style="margin: 0; color: #64748b; font-size: 13px;">VEHICLE NUMBER</p>
+                            <p style="margin: 5px 0 0 0; font-weight: 700;">${b.vehicleNumber || 'N/A'}</p>
                         </div>
+                        <p>Happy Charging!<br/><b>Team EvGenee</b></p>
                     `
                 });
 

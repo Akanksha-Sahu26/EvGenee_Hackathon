@@ -117,6 +117,9 @@ export const AuthAPI = {
   profile: () => api.get("/users/profile"),
   updateProfile: (d: { name?: string; vehicle?: Vehicle; vehicleNumbers?: string[] }) => api.put("/users/profile", d),
   logout: () => api.post("/users/logout"),
+  forgotPassword: (d: { email: string }) => api.post("/users/forgot-password", d),
+  verifyOTP: (d: { email: string; otp: string }) => api.post("/users/verify-otp", d),
+  resetPassword: (d: { email: string; otp: string; password?: string }) => api.post("/users/reset-password", d),
 };
 
 // ===== Stations =====

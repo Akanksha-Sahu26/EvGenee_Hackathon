@@ -98,6 +98,14 @@ function LoginPage() {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            <div className="flex justify-end">
+              <Link
+                to="/auth/forgot-password"
+                className="text-xs font-semibold text-green-400 hover:text-green-300 transition-colors"
+              >
+                Forgot Password?
+              </Link>
+            </div>
           </div>
 
           {/* Submit */}

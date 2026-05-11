@@ -18,6 +18,7 @@ import { Route as StationsStationIdRouteImport } from './routes/stations.$statio
 import { Route as OwnerNewRouteImport } from './routes/owner.new'
 import { Route as AuthRegisterRouteImport } from './routes/auth.register'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
+import { Route as AuthForgotPasswordRouteImport } from './routes/auth.forgot-password'
 import { Route as OwnerStationsStationIdRouteImport } from './routes/owner.stations.$stationId'
 
 const ProfileRoute = ProfileRouteImport.update({
@@ -65,6 +66,11 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/auth/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/auth/forgot-password',
+  path: '/auth/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OwnerStationsStationIdRoute = OwnerStationsStationIdRouteImport.update({
   id: '/stations/$stationId',
   path: '/stations/$stationId',
@@ -76,6 +82,7 @@ export interface FileRoutesByFullPath {
   '/bookings': typeof BookingsRoute
   '/owner': typeof OwnerRouteWithChildren
   '/profile': typeof ProfileRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/owner/new': typeof OwnerNewRoute
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bookings': typeof BookingsRoute
   '/profile': typeof ProfileRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/owner/new': typeof OwnerNewRoute
@@ -100,6 +108,7 @@ export interface FileRoutesById {
   '/bookings': typeof BookingsRoute
   '/owner': typeof OwnerRouteWithChildren
   '/profile': typeof ProfileRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/register': typeof AuthRegisterRoute
   '/owner/new': typeof OwnerNewRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/owner'
     | '/profile'
+    | '/auth/forgot-password'
     | '/auth/login'
     | '/auth/register'
     | '/owner/new'
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | '/'
     | '/bookings'
     | '/profile'
+    | '/auth/forgot-password'
     | '/auth/login'
     | '/auth/register'
     | '/owner/new'
@@ -137,6 +148,7 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/owner'
     | '/profile'
+    | '/auth/forgot-password'
     | '/auth/login'
     | '/auth/register'
     | '/owner/new'
@@ -150,6 +162,7 @@ export interface RootRouteChildren {
   BookingsRoute: typeof BookingsRoute
   OwnerRoute: typeof OwnerRouteWithChildren
   ProfileRoute: typeof ProfileRoute
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRoute
   AuthRegisterRoute: typeof AuthRegisterRoute
   StationsStationIdRoute: typeof StationsStationIdRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/forgot-password': {
+      id: '/auth/forgot-password'
+      path: '/auth/forgot-password'
+      fullPath: '/auth/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/owner/stations/$stationId': {
       id: '/owner/stations/$stationId'
       path: '/stations/$stationId'
@@ -249,6 +269,7 @@ const rootRouteChildren: RootRouteChildren = {
   BookingsRoute: BookingsRoute,
   OwnerRoute: OwnerRouteWithChildren,
   ProfileRoute: ProfileRoute,
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRoute,
   AuthRegisterRoute: AuthRegisterRoute,
   StationsStationIdRoute: StationsStationIdRoute,

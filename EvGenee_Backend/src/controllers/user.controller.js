@@ -2,6 +2,8 @@ const User = require('../models/user.model');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_KEY } = require('../config/config');
+const { sendEmail } = require('../services/email.service');
+const crypto = require('crypto');
 
 const registerUser = async (req, res, next) => {
   try {
@@ -178,10 +180,118 @@ const logoutUser = async (req, res) => {
   });
 };
 
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address',
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    user.resetPasswordOTP = otp;
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    await sendEmail({
+      to: user.email,
+      subject: "🔐 Your Password Reset OTP - EvGenee",
+      title: "Password Reset Request",
+      content: `
+        <p>Hello <b>${user.name}</b>,</p>
+        <p>We received a request to reset your password. Use the code below to proceed. This OTP is valid for <b>10 minutes</b>.</p>
+        <div class="otp-box">
+          <p class="otp-code">${otp}</p>
+        </div>
+        <p>If you did not request this, please ignore this email or contact support if you have concerns.</p>
+        <p>Stay Secure,<br/><b>Team EvGenee</b></p>
+      `
+    });
+
+    res.json({
+      success: true,
+      message: 'OTP sent to your email address',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    
+    const user = await User.findOne({ 
+      email,
+      resetPasswordOTP: otp,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, password } = req.body;
+
+    const user = await User.findOne({ 
+      email,
+      resetPasswordOTP: otp,
+      resetPasswordExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP session',
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 12);
+    user.password = hashedPassword;
+    
+    // Clear OTP fields
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordExpires = undefined;
+    
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successful. You can now login with your new password.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getProfile,
   updateProfile,
   logoutUser,
+  forgotPassword,
+  verifyOTP,
+  resetPassword,
 };
